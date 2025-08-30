@@ -27,41 +27,68 @@ enum FbsPropertyName {
 	TNumericLiteral(s:String);
 }
 
+enum FbsScalar {
+  TBoolConstant(s:String);
+  TIntegerConstant(s:String);
+  TFloatConstant(s:String);
+}
+
+enum FbsValue {
+	VScalar(s:FbsScalar);
+	VString(s:String);
+	VObject(obj:Array<{key:String, value:FbsValue}>);
+	VArray(arr:Array<FbsValue>);
+}
+
+typedef FbsMetadataEntry = {
+	key: String,
+	value: Null<FbsValue>
+}
+
+typedef FbsMetadata = Array<FbsMetadataEntry>;
+
 typedef FbsEnum = {
 	name: String,
 	type: FbsType,
-	ctors: Array<FbsEnumCtor>
+	ctors: Array<FbsEnumCtor>,
+	metadata: FbsMetadata
 }
 
 typedef FbsEnumCtor = {
 	name: FbsPropertyName,
-	value: Null<String>
+	value: Null<String>,
+	metadata: FbsMetadata
 }
 
 typedef FbsUnion = {
 	name: String,
-	values: Array<String>
+	values: Array<String>,
+	metadata: FbsMetadata
 }
 typedef FbsStruct = {
 	name: String,
-	fields: Array<FbsStructField>
+	fields: Array<FbsStructField>,
+	metadata: FbsMetadata
 }
 
 typedef FbsStructField = {
 	name: String,
-	type: FbsType
+	type: FbsType,
+	metadata: FbsMetadata
 }
 
 typedef FbsTable = {
 	name: String,
-	fields: Array<FbsTableField>
+	fields: Array<FbsTableField>,
+	metadata: FbsMetadata
 }
 
 typedef FbsTableField = {
 	name: String,
 	type: FbsType,
 	isVector: Bool,
-	defaultValue: Null<String>
+	defaultValue: Null<String>,
+	metadata: FbsMetadata
 }
 
 enum FbsDeclaration {

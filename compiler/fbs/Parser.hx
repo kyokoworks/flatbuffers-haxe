@@ -77,11 +77,12 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 	function enumParse(decl:FbsDeclaration):FbsDeclaration {
 		while (true) {
 			switch stream {
-				case [{def: TIdent(s)}, {def: TColon}, t = type(), {def: TLBrace}, props = enumProps([])]:
+				case [{def: TIdent(s)}, {def: TColon}, t = type(), meta = metadata(), {def: TLBrace}, props = enumProps([])]:
 					decl = DEnum({
 						name: s, 
 						type: t,
-						ctors: props
+						ctors: props,
+						metadata: meta
 					});	
 					this.last.def == TRBrace ? break : continue;
 			}
@@ -92,10 +93,13 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 	function enumProps(arr:Array<FbsEnumCtor>):Array<FbsEnumCtor> {
 		while (true) {
 			switch stream {
-				case [{def: TIdent(s)}, val = enumNext()]: 
+				case [{def: TRBrace}]: break;
+				case [{def: TComma}]:
+				case [{def: TIdent(s)}, val = enumNext(), meta = metadata()]: 
 					arr.push({
 						name: TIdentifier(s),
-						value: val
+						value: val,
+						metadata: meta
 					});
 					this.last.def == TRBrace ? break : continue;
 			}
@@ -123,11 +127,12 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 	function unionParse(decl:FbsDeclaration) {
 		while (true) {
 			switch stream {
-				case [{def: TIdent(s)}, {def: TLBrace}, val = unionNext([])]: 
+				case [{def: TIdent(s)}, meta = metadata(), {def: TLBrace}, val = unionNext([])]: 
 					
 				decl = DUnion({
 					name: s, 
-					values: val
+					values: val,
+					metadata: meta
 				});
 				break;
 			}
@@ -151,10 +156,11 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 	function structParse(decl:FbsDeclaration):FbsDeclaration {
 		while (true) {
 			switch stream {
-				case [{def: TIdent(s)}, {def: TLBrace}, f = structFields([])]:
+				case [{def: TIdent(s)}, meta = metadata(), {def: TLBrace}, f = structFields([])]:
 				decl = DStruct({
 					name: s, 
-					fields: f
+					fields: f,
+					metadata: meta
 				}); 
 				break;
 			}
@@ -167,10 +173,11 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 			switch stream {
 				case [{def: TRBrace}]: break;
 				case [{def: TComment(s)}]:
-				case [{def: TIdent(s)}, {def: TColon}, t = type(), {def: TSemicolon}]: 
+				case [{def: TIdent(s)}, {def: TColon}, t = type(), meta = metadata(), {def: TSemicolon}]: 
 					arr.push({
 						name: s,
-						type: t
+						type: t,
+						metadata: meta
 					});
 			}
 		}
@@ -184,10 +191,11 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 		while (true) {
 			switch stream {
 				case [{def: TRBrace}]: break;
-				case [{def: TIdent(s)}, {def: TLBrace}, f = tableFields([])]:
+				case [{def: TIdent(s)}, meta = metadata(), {def: TLBrace}, f = tableFields([])]:
 					decl = DTable({
 						name: s, 
-						fields: f
+						fields: f,
+						metadata: meta
 					}); 
 					break;
 			}
@@ -200,12 +208,13 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 			switch stream {
 				case [{def: TRBrace}]: break;
 				case [{def: TComment(s)}]:
-				case [{def: TIdent(s)}, {def: TColon}, t = typeVector(), tn = tableNext()]: 
+				case [{def: TIdent(s)}, {def: TColon}, t = typeVector(), tn = tableNext(), meta = metadata(), {def: TSemicolon}]: 
 					arr.push({
 						name: s,
 						type: t.type,
 						isVector: t.isVector,
-						defaultValue: tn
+						defaultValue: tn,
+						metadata: meta
 					});
 			}
 		}
@@ -213,11 +222,11 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 	}
 
 	function tableNext():String {
+		// Return an assigned default value if present, but do NOT consume the trailing
+		// semicolon here; the outer caller (tableFields) is responsible for matching it.
 		return switch stream {
-			// Replace semicolon with while loop switch stream for attributes then semicolon or
-			// simply semicolon with no attributes.
-			case [{def: TSemicolon}]: null;
-			case [{def: TAssign}, {def: TNumber(v) | TBool(v) | TIdent(v)}, {def: TSemicolon}]: v;
+			case [{def: TAssign}, {def: TNumber(v) | TBool(v) | TIdent(v)}]: v;
+			case _: null;
 		}
 	}
 
@@ -234,6 +243,74 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 	}
 
 	// Utils
+
+	function metadata():FbsMetadata {
+		return switch stream {
+			case [{def: TLPar}, entries = metadataEntries([])]: entries;
+			case _: []; // No metadata
+		}
+	}
+
+	function metadataEntries(arr:Array<FbsMetadataEntry>):FbsMetadata {
+		while (true) {
+			switch stream {
+				case [{def: TRPar}]: break;
+				case [{def: TIdent(s)}, val = metadataValue()]: 
+					arr.push({
+						key: s,
+						value: val
+					});
+				case [{def: TComma}]:
+			}
+		}
+		return arr;
+	}
+
+	function metadataValue():Null<FbsValue> {
+		return switch stream {
+			case [{def: TColon}, val = value()]: val;
+			case _: null; // No value, just a key
+		}
+	}
+
+	function value():FbsValue {
+		return switch stream {
+			case [{def: TBool(v)}]: VScalar(TBoolConstant(v));
+			case [{def: TNumber(v)}]: 
+				if (v.indexOf('.') != -1 || v.toLowerCase().indexOf('e') != -1) {
+					VScalar(TFloatConstant(v));
+				} else {
+					VScalar(TIntegerConstant(v));
+				}
+			case [{def: TString(v)}]: VString(v);
+			case [{def: TLBrace}, obj = objectValue([])]: VObject(obj);
+			case [{def: TLBrack}, arr = arrayValue([])]: VArray(arr);
+		}
+	}
+
+	function objectValue(arr:Array<{key:String, value:FbsValue}>):Array<{key:String, value:FbsValue}> {
+		while (true) {
+			switch stream {
+				case [{def: TRBrace}]: break;
+				case [{def: TIdent(key)}, {def: TColon}, val = value()]:
+					arr.push({key: key, value: val});
+				case [{def: TComma}]:
+			}
+		}
+		return arr;
+	}
+
+	function arrayValue(arr:Array<FbsValue>):Array<FbsValue> {
+		while (true) {
+			switch stream {
+				case [{def: TRBrack}]: break;
+				case [val = value()]:
+					arr.push(val);
+				case [{def: TComma}]:
+			}
+		}
+		return arr;
+	}
 
 	function type():FbsType {
 		return switch stream {

@@ -130,15 +130,154 @@ class Converter {
 				pos: nullPos
 			}
 		});
+		// Determine base type for the enum abstract. Use Int64 for long/ulong, otherwise Int.
+		var baseType:ComplexType = makeType("Int");
+		// Detect bit_flags metadata
+		var isBitFlags:Bool = false;
+		if (enumObj.metadata != null) {
+			for (m in enumObj.metadata) {
+				if (m.key == "bit_flags") {
+					isBitFlags = true;
+					break;
+				}
+			}
+		}
+
+		switch enumObj.type {
+			case TPrimitive(TLong):
+			case TPrimitive(TULong):
+				if (isBitFlags) {
+					haxe.macro.Context.error("64-bit (bit_flags) enums are currently unsupported; remove (bit_flags) or use a 32-bit enum type.", nullPos);
+				}
+				baseType = makeType("Int64", ["haxe"]);
+			case _:
+		}
+
+		// If enum has metadata with key "bit_flags", produce a bit-flags style abstract.
+		var enumMetaParams:Array<Expr> = [];
+		var isBitFlags:Bool = false;
+		if (enumObj.metadata != null) {
+			for (m in enumObj.metadata) {
+				if (m.key == "bit_flags") {
+					isBitFlags = true;
+					enumMetaParams.push(makeIdent("bit_flags"));
+					break;
+				}
+			}
+		}
+
+		if (isBitFlags) {
+			return convertEnumBitFlags(enumObj, fields);
+		}
+
 		return {
 			pack: [],
 			name: enumObj.name,
 			pos: nullPos,
-			meta: [{name: ":enum", params: [], pos: nullPos}],
+			meta: [{name: ":enum", params: enumMetaParams, pos: nullPos}],
 			params: [],
 			isExtern: false,
-			kind: TDAbstract(makeType("Int")),
+			kind: TDAbstract(baseType),
 			fields: Lambda.array(fields)
+		}
+	}
+
+	// Convert enum declared with (bit_flags) into an abstract that supports bitwise ops.
+	function convertEnumBitFlags(enumObj:FbsEnum, fieldsConst:Array<Field>):TypeDefinition {
+		var name:String = enumObj.name;
+		// Build constant fields: for bit_flags, missing values (or ordinal-style 0,1,2...) become 1<<index.
+		var constFields:Array<Field> = enumObj.ctors.mapi(function(i:Int, ctor:FbsEnumCtor):Field {
+			var fieldVal:Int;
+			if (ctor.value != null) {
+				fieldVal = Std.parseInt(ctor.value);
+				// If the enum explicitly used ordinal values (0,1,2,...), convert to bit masks.
+				if (fieldVal == i) fieldVal = 1 << i;
+			} else {
+				fieldVal = 1 << i;
+			}
+			return {
+				name: ctor.name.getParameters()[0],
+				kind: FVar(null, { expr: EConst(CInt(Std.string(fieldVal))), pos: nullPos }),
+				doc: null,
+				meta: [],
+				access: [],
+				pos: nullPos
+			};
+		});
+
+		// Operator declarations: or and and
+		var opOr:Field = {
+			name: 'or',
+			kind: FFun({
+				args: [makeFuncArg('a', makeType(name)), makeFuncArg('b', makeType(name))],
+				ret: makeType(name),
+				expr: null,
+				params: null
+			}),
+			doc: null,
+			meta: [{name: ':op', params: [makeIdent('a|b')], pos: nullPos}],
+			access: [APublic, AStatic],
+			pos: nullPos
+		};
+
+		var opAnd:Field = {
+			name: 'and',
+			kind: FFun({
+				args: [makeFuncArg('a', makeType(name)), makeFuncArg('b', makeType(name))],
+				ret: makeType(name),
+				expr: null,
+				params: null
+			}),
+			doc: null,
+			meta: [{name: ':op', params: [makeIdent('a&b')], pos: nullPos}],
+			access: [APublic, AStatic],
+			pos: nullPos
+		};
+
+		// toInt method
+		var toIntField:Field = {
+			name: 'toInt',
+			kind: FFun({
+				args: [],
+				ret: makeType('Int'),
+				expr: makeExpr(EBlock([ makeExpr(EReturn(makeIdent('this'))) ])),
+				params: null
+			}),
+			doc: null,
+			meta: [],
+			access: [APublic],
+			pos: nullPos
+		};
+
+		// ofInt static
+		var ofIntField:Field = {
+			name: 'ofInt',
+			kind: FFun({
+				args: [makeFuncArg('i', makeType('Int'))],
+				ret: makeType(name),
+				expr: makeExpr(EBlock([ makeExpr(EReturn(makeExpr(ECall(makeIdent(name), [makeIdent('i')])))) ])),
+				params: null
+			}),
+			doc: null,
+			meta: [],
+			access: [APublic, AStatic],
+			pos: nullPos
+		};
+
+		var allFields:Array<Field> = Lambda.array(Lambda.flatten([
+			constFields,
+			[opOr, opAnd, toIntField, ofIntField]
+		]));
+
+		return {
+			pack: [],
+			name: name,
+			pos: nullPos,
+			meta: [{name: ':enum', params: [], pos: nullPos}],
+			params: [],
+			isExtern: false,
+			kind: TDAbstract(makeType('Int')),
+			fields: allFields
 		}
 	}
 
