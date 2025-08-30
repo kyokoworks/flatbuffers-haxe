@@ -34,7 +34,7 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 	public function parse():ParsedObject {
 		while(true) {
 			switch stream {
-				case [{def: TComment(s)}]:
+				case [{def: TComment(s)}]: continue;
 				case [{def: TKeyword(FbsNamespace)}, ns = namespaceParse([])]:
 					parsedObject.namespaces.push(ns);
 				case [{def: TKeyword(FbsEnum)}, en = enumParse(null)]:
@@ -77,6 +77,7 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 	function enumParse(decl:FbsDeclaration):FbsDeclaration {
 		while (true) {
 			switch stream {
+				case [{def: TComment(s)}]: continue;
 				case [{def: TIdent(s)}, {def: TColon}, t = type(), meta = metadata(), {def: TLBrace}, props = enumProps([])]:
 					decl = DEnum({
 						name: s, 
@@ -93,6 +94,7 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 	function enumProps(arr:Array<FbsEnumCtor>):Array<FbsEnumCtor> {
 		while (true) {
 			switch stream {
+				case [{def: TComment(s)}]: continue;
 				case [{def: TRBrace}]: break;
 				case [{def: TComma}]:
 				case [{def: TIdent(s)}, val = enumNext(), meta = metadata()]: 
@@ -172,7 +174,7 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 		while (true) {
 			switch stream {
 				case [{def: TRBrace}]: break;
-				case [{def: TComment(s)}]:
+				case [{def: TComment(s)}]: continue;
 				case [{def: TIdent(s)}, {def: TColon}, t = type(), meta = metadata(), {def: TSemicolon}]: 
 					arr.push({
 						name: s,

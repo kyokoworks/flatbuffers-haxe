@@ -144,8 +144,7 @@ class Converter {
 		}
 
 		switch enumObj.type {
-			case TPrimitive(TLong):
-			case TPrimitive(TULong):
+			case TPrimitive(TLong) | TPrimitive(TULong):
 				if (isBitFlags) {
 					haxe.macro.Context.error("64-bit (bit_flags) enums are currently unsupported; remove (bit_flags) or use a 32-bit enum type.", nullPos);
 				}
@@ -166,24 +165,51 @@ class Converter {
 			}
 		}
 
+		// inline constructor: Haxe handles from/to conversions for abstracts, so provide
+		// an inline constructor that assigns the underlying value.
+		var newField:Field = {
+			name: 'new',
+			kind: FFun({
+				args: [makeFuncArg('i', makeType('Int'))],
+				ret: null,
+				expr: makeExpr(EBlock([
+					makeExpr(EBinop(OpAssign, makeIdent('this'), makeIdent('i')))
+				])),
+				params: null
+			}),
+			doc: null,
+			// mark inline via metadata so generated code is `inline function new(i:Int) { ... }`
+			meta: [{ name: 'inline', params: [], pos: nullPos }],
+			access: [APublic],
+			pos: nullPos
+		};
+
+		var methods = [newField];
+
 		if (isBitFlags) {
-			return convertEnumBitFlags(enumObj, fields);
+			return convertEnumBitFlags(enumObj, fields, methods);
 		}
+
+		var allFields:Array<Field> = Lambda.array(Lambda.flatten([
+			fields,
+			methods
+		]));
 
 		return {
 			pack: [],
 			name: enumObj.name,
 			pos: nullPos,
-			meta: [{name: ":enum", params: enumMetaParams, pos: nullPos}],
+			meta: [],
 			params: [],
 			isExtern: false,
-			kind: TDAbstract(baseType),
-			fields: Lambda.array(fields)
+			kind: TDAbstract(baseType, [AbEnum], [baseType], [baseType]),
+			fields: allFields
 		}
 	}
 
 	// Convert enum declared with (bit_flags) into an abstract that supports bitwise ops.
-	function convertEnumBitFlags(enumObj:FbsEnum, fieldsConst:Array<Field>):TypeDefinition {
+	function convertEnumBitFlags(enumObj:FbsEnum, fieldsConst:Array<Field>, methods:Array<Field>):TypeDefinition {
+		var baseType = makeType("Int");
 		var name:String = enumObj.name;
 		// Build constant fields: for bit_flags, missing values (or ordinal-style 0,1,2...) become 1<<index.
 		var constFields:Array<Field> = enumObj.ctors.mapi(function(i:Int, ctor:FbsEnumCtor):Field {
@@ -234,49 +260,20 @@ class Converter {
 			pos: nullPos
 		};
 
-		// toInt method
-		var toIntField:Field = {
-			name: 'toInt',
-			kind: FFun({
-				args: [],
-				ret: makeType('Int'),
-				expr: makeExpr(EBlock([ makeExpr(EReturn(makeIdent('this'))) ])),
-				params: null
-			}),
-			doc: null,
-			meta: [],
-			access: [APublic],
-			pos: nullPos
-		};
-
-		// ofInt static
-		var ofIntField:Field = {
-			name: 'ofInt',
-			kind: FFun({
-				args: [makeFuncArg('i', makeType('Int'))],
-				ret: makeType(name),
-				expr: makeExpr(EBlock([ makeExpr(EReturn(makeExpr(ECall(makeIdent(name), [makeIdent('i')])))) ])),
-				params: null
-			}),
-			doc: null,
-			meta: [],
-			access: [APublic, AStatic],
-			pos: nullPos
-		};
-
 		var allFields:Array<Field> = Lambda.array(Lambda.flatten([
 			constFields,
-			[opOr, opAnd, toIntField, ofIntField]
+			methods,
+			[opOr, opAnd]
 		]));
 
 		return {
 			pack: [],
 			name: name,
 			pos: nullPos,
-			meta: [{name: ':enum', params: [], pos: nullPos}],
+			meta: [],
 			params: [],
 			isExtern: false,
-			kind: TDAbstract(makeType('Int')),
+			kind: TDAbstract(baseType, [AbEnum], [baseType], [baseType]),
 			fields: allFields
 		}
 	}
@@ -528,11 +525,22 @@ class Converter {
 							))
 						));
 					} else {
-						retExpr = makeExpr(EReturn(
-							makeExpr(ETernary(
-								makeIdent('offset != 0'), makeIdent('this.bb.${fieldType.alias}(this.bb_pos + offset)'), makeIdent(fieldType.defaultVal)
-							))
-						));
+						// Non-vector scalar field: for booleans we must return Bool and convert
+						// the underlying byte to a boolean. Strings remain nullable.
+						switch (cast field.type:FbsType) {
+							case TPrimitive(TBool):
+								retExpr = makeExpr(EReturn(
+									makeExpr(ETernary(
+										makeIdent('offset != 0'), makeIdent('(this.bb.readInt8(this.bb_pos + offset) != 0)'), makeIdent('false')
+									))
+								));
+							default:
+								retExpr = makeExpr(EReturn(
+									makeExpr(ETernary(
+										makeIdent('offset != 0'), makeIdent('this.bb.${fieldType.alias}(this.bb_pos + offset)'), makeIdent(fieldType.defaultVal)
+									))
+								));
+						}
 					}
 				case TComposite(t):
 					fieldType = {type: makeType(t), alias: t, memSize: 0, defaultVal: '0'};
@@ -585,14 +593,31 @@ class Converter {
 			vtable_offset += 2;
 			if(field.isVector) {
 				var vecFieldArray:Array<Field>;
+				// Determine return type for vector element getter
+				var vecElemRet:ComplexType = null;
+				switch (field.type) {
+					case TPrimitive(_):
+						var primElem = (cast field.type.getParameters()[0]:FbsPrimitiveType);
+						switch primElem {
+							case TString:
+								vecElemRet = makeType('Null', null, [TPType(makeType('String'))]);
+							case TBool:
+								vecElemRet = makeType('Bool');
+							case _:
+								vecElemRet = fieldType.type;
+						}
+					case TComposite(_):
+						vecElemRet = makeType('Null', null, [TPType(fieldType.type)]);
+				}
+
 				vecFieldArray = [{
 					name: field.name,
 					kind: FFun({
 						args: args,
-						ret: makeType('Null', null, [TPType(fieldType.type)]),
+						ret: vecElemRet,
 						expr: makeExpr(EBlock([
 							makeExpr(makeVar(
-								'offset', makeType('Null<Int>'), makeIdent('this.bb.__offset(this.bb_pos, ${vtable_offset})')
+								'offset', makeType('Int'), makeIdent('this.bb.__offset(this.bb_pos, ${vtable_offset})')
 							)),
 							retExpr
 						])),
@@ -609,9 +634,9 @@ class Converter {
 						args: [],
 						ret: makeType('Null', null, [TPType(makeType("Int"))]),
 						expr: makeExpr(EBlock([
-							makeExpr(makeVar(
-								'offset', makeType('Null<Int>'), makeIdent('this.bb.__offset(this.bb_pos, ${vtable_offset})')
-							)),
+								makeExpr(makeVar(
+									'offset', makeType('Int'), makeIdent('this.bb.__offset(this.bb_pos, ${vtable_offset})')
+								)),
 							makeExpr(EReturn(
 								makeExpr(ETernary(
 									makeIdent('offset != 0'), makeIdent('this.bb.__vector_len(this.bb_pos + offset)'), makeIdent(fieldType.defaultVal)
@@ -641,9 +666,9 @@ class Converter {
 								args: [],
 								ret: makeType('Null', null, [TPType(makeType('${typeAlias}Array'))]),
 								expr: makeExpr(EBlock([
-									makeExpr(makeVar(
-										'offset', makeType('Null<Int>'), makeIdent('this.bb.__offset(this.bb_pos, ${vtable_offset})')
-									)),
+										makeExpr(makeVar(
+											'offset', makeType('Int'), makeIdent('this.bb.__offset(this.bb_pos, ${vtable_offset})')
+										)),
 									makeExpr(EReturn(
 										makeExpr(ETernary(
 											makeIdent('offset != 0'), makeIdent('${typeAlias}Array.fromBytes(this.bb.bytes().view.buffer, this.bb.bytes().view.byteOffset + this.bb.__vector(this.bb_pos + offset), this.bb.__vector_len(this.bb_pos + offset))'), makeIdent('null')
@@ -675,7 +700,7 @@ class Converter {
 									ret: makeType('Null', null, [TPType(makeType('${typeAlias}Array'))]),
 									expr: makeExpr(EBlock([
 										makeExpr(makeVar(
-											'offset', makeType('Null<Int>'), makeIdent('this.bb.__offset(this.bb_pos, ${vtable_offset})')
+											'offset', makeType('Int'), makeIdent('this.bb.__offset(this.bb_pos, ${vtable_offset})')
 										)),
 										makeExpr(EReturn(
 											makeExpr(ETernary(
@@ -695,14 +720,31 @@ class Converter {
 				}
 				return vecFieldArray;
 			} else {
+				// Determine the Haxe return type for this field getter.
+				var retType:ComplexType = null;
+				switch (field.type) {
+					case TPrimitive(_):
+						var prim = (cast field.type.getParameters()[0]:FbsPrimitiveType);
+						switch prim {
+							case TString:
+								retType = makeType('Null', null, [TPType(makeType('String'))]);
+							case TBool:
+								retType = makeType('Bool');
+							case _:
+								retType = fieldType.type;
+						}
+					case TComposite(_):
+						retType = makeType('Null', null, [TPType(fieldType.type)]);
+				}
+
 				return [{
 					name: field.name,
 					kind: FFun({
 						args: args,
-						ret: makeType('Null', null, [TPType(fieldType.type)]),
+						ret: retType,
 						expr: makeExpr(EBlock([
 							makeExpr(makeVar(
-								'offset', makeType('Null<Int>'), makeIdent('this.bb.__offset(this.bb_pos, ${vtable_offset})')
+								'offset', makeType('Int'), makeIdent('this.bb.__offset(this.bb_pos, ${vtable_offset})')
 							)),
 							retExpr
 						])),
@@ -744,12 +786,11 @@ class Converter {
 			switch (field.type) {
 				case TPrimitive(_):
 					fieldType = convertType(field.type.getParameters()[0]);
+					var typeCast = "";
 					if(!field.isVector) {
 						switch((cast field.type.getParameters()[0]:FbsPrimitiveType)) {
-							case TByte:
-								fieldName += " ? 1 : 0";
-							case TUByte:
-								fieldName += " ? 1 : 0";
+							case TBool:
+								typeCast = " ? 1 : 0";
 							case TLong:
 								fieldType.defaultVal = "builder.createLong(0, 0)";
 							case TULong:
@@ -771,7 +812,7 @@ class Converter {
 					expr = makeExpr(EBlock([
 						makeExpr(ECall(
 							makeIdent('builder.addField${fieldType.alias}'),
-							[makeIdent(Std.string(i)), makeIdent(fieldName), makeIdent(fieldType.defaultVal)]
+							[makeIdent(Std.string(i)), makeIdent(fieldName + typeCast), makeIdent(fieldType.defaultVal)]
 						))
 					]));
 				case TComposite(t):
@@ -856,7 +897,9 @@ class Converter {
 							case DTable(p):
 								elem_size = Std.string(4);
 								num_elems = Std.string(4);
-								fieldType.type = makeType('Array<${p.name}>');
+								// For vectors of tables we expect an array of Offsets (not table instances).
+								fieldType.type = makeType('Array<Offset>');
+								fieldType.alias = 'Offset';
 								skipCreate = false;
 							default:
 						}
@@ -873,26 +916,35 @@ class Converter {
 						num_elems = Std.string(fieldType.memSize);
 				}
 				if(!skipCreate) {
+					var elemExpr = switch (fieldType.alias) {
+						case 'Offset': 'data[i]';
+						case _: switch (cast field.type:FbsType) {
+							case TPrimitive(TBool): '(data[i] ? 1 : 0)';
+							case _: 'cast data[i]';
+						}
+					};
+
 					addFieldArray.push({
-							name: 'create${field.name.charAt(0).toUpperCase() + field.name.substr(1)}Vector',
-							kind: FFun({
-								args: [makeFuncArg("builder", makeType("Builder")), makeFuncArg("data", fieldType.type)],
-								ret: makeType('Offset'),
+						name: 'create${field.name.charAt(0).toUpperCase() + field.name.substr(1)}Vector',
+						kind: FFun({
+							args: [makeFuncArg("builder", makeType("Builder")), makeFuncArg("data", fieldType.type)],
+							ret: makeType('Offset'),
 								expr: makeExpr(EBlock([
 									makeExpr(ECall(
 										makeIdent('builder.startVector'),
 										[makeIdent(elem_size), makeIdent('data.length'), makeIdent(num_elems)]
 									)),
 									makeIdent('var i:Int = data.length - 1'),
-									makeIdent('while (i >= 0) { builder.add${fieldType.alias}(cast data[i]); i--; }'),
+									// Use elemExpr computed above.
+									makeIdent('while (i >= 0) { builder.add${fieldType.alias}(' + elemExpr + '); i--; }'),
 									makeIdent('return builder.endVector()')
 								])),
-								params: null
-							}),
-							doc: null,
-							meta: [],
-							access: [APublic, AStatic],
-							pos: nullPos
+							params: null
+						}),
+						doc: null,
+						meta: [],
+						access: [APublic, AStatic],
+						pos: nullPos
 					});
 				}
 				addFieldArray.push({
@@ -923,9 +975,9 @@ class Converter {
 				args: [makeFuncArg("builder", makeType("Builder"))],
 				ret: makeType('Offset'),
 				expr: makeExpr(EBlock([
-					makeExpr(makeVar(
-						'offset', makeType('Null<Int>'), makeIdent('builder.endObject()')
-					)),
+						makeExpr(makeVar(
+							'offset', makeType('Int'), makeIdent('builder.endObject()')
+						)),
 					makeExpr(EReturn(
 						makeIdent('offset')
 					))
