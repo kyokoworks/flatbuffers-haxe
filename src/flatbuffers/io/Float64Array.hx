@@ -21,11 +21,7 @@
  */
 package flatbuffers.io;
 
-#if !nodejs
-import js.html.compat.Float64Array;
-#end
-
-typedef Float64ArrayData = js.html.Float64Array;
+typedef Float64ArrayData = js.lib.Float64Array;
 
 abstract Float64Array(Float64ArrayData) {
 

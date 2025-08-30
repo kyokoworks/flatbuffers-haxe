@@ -273,7 +273,7 @@ class Builder
 		var old_buf_size = bb.capacity();
 
 		// Ensure we don't grow beyond what fits in an int.
-		if ( !Std.is((old_buf_size & 0xC0000000), Int) ) {
+		if ( !Std.isOfType((old_buf_size & 0xC0000000), Int) ) {
 			throw "FlatBuffers: cannot grow buffer beyond 2 gigabytes.";
 		}
 

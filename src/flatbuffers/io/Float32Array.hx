@@ -21,11 +21,7 @@
  */
 package flatbuffers.io;
 
-#if !nodejs
-import js.html.compat.Float32Array;
-#end
-
-typedef Float32ArrayData = js.html.Float32Array;
+typedef Float32ArrayData = js.lib.Float32Array;
 
 abstract Float32Array(Float32ArrayData) {
 
