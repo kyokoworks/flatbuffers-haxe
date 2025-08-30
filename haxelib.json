@@ -9,7 +9,7 @@
   "version": "1.0.0",
   "releasenote": "FlatBuffers",
   "dependencies": {
-    "hxparse": "4.0.0",
-    "hxargs": "3.0.2"
+    "hxparse": "4.3.0",
+    "hxargs": "4.0.0"
   }
 }
