@@ -2,6 +2,7 @@ package fbs;
 
 import fbs.Token;
 import fbs.Ast;
+import fbs.Lexer;
 
 typedef ParsedObject = {
 	namespaces: Array<FbsDeclaration>,
@@ -26,7 +27,7 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 
 	public function new(input:byte.ByteData, sourceName:String) {
 		moduleName = sourceName;
-		super(new hxparse.LexerTokenSource(new fbs.Lexer(input, sourceName), fbs.Lexer.tok));
+		super(new hxparse.LexerTokenSource(new Lexer(input, sourceName), Lexer.tok));
 	}
 
 	// Parse FlatBuffer IDL.
@@ -247,6 +248,16 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 			case [{def: TIdent("long")}]: TPrimitive(TLong);
 			case [{def: TIdent("ulong")}]: TPrimitive(TULong);
 			case [{def: TIdent("double")}]: TPrimitive(TDouble);
+			case [{def: TIdent("int8")}]: TPrimitive(TByte);
+			case [{def: TIdent("uint8")}]: TPrimitive(TUByte);
+			case [{def: TIdent("int16")}]: TPrimitive(TShort);
+			case [{def: TIdent("uint16")}]: TPrimitive(TUShort);
+			case [{def: TIdent("int32")}]: TPrimitive(TInt);
+			case [{def: TIdent("uint32")}]: TPrimitive(TUInt);
+			case [{def: TIdent("int64")}]: TPrimitive(TLong);
+			case [{def: TIdent("uint64")}]: TPrimitive(TULong);
+			case [{def: TIdent("float32")}]: TPrimitive(TFloat);
+			case [{def: TIdent("float64")}]: TPrimitive(TDouble);
 			case [{def: TIdent("string")}]: TPrimitive(TString);
 			case [{def: TIdent(s)}]: TComposite(s);
 		}
