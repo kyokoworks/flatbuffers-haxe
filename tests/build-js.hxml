@@ -1,4 +1,6 @@
 -lib flatbuffers
+-lib hx3compat
+-cp .
 -main UnitTest
 -js build/js/test.js
 -debug

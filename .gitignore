@@ -4,4 +4,5 @@ build.hxml
 tests/build/js/test.js
 tests/build/js/test.js.map
 tests/build/cpp/
+tests/reference/
 .haxelib/

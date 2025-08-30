@@ -1,0 +1,15 @@
+build-compiler.hxml
+
+--next
+
+--cwd tests
+generate.hxml
+
+--next
+
+build-cpp.hxml
+
+--next
+
+# --cwd tests
+build-js.hxml

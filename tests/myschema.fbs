@@ -1,11 +1,59 @@
 // Example IDL file for our monster's schema.
-namespace MyGame.Sample;
-enum Color:byte { Red = 0, Green, Blue = 2 }
+//namespace MyGame.Sample;
+
+/// Composite components of Monster color.
+enum Color:ubyte (bit_flags) {
+  Red = 0, // color Red = (1u << 0)
+  /// \brief color Green
+  /// Green is bit_flag with value (1u << 1)
+  Green,
+  /// \brief color Blue (1u << 3)
+  Blue = 3,
+}
+
+enum Race:byte {
+  None = -1,
+  Human = 0,
+  Dwarf,
+  Elf,
+}
+
 struct Vec3 {
   x:float;
   y:float;
   z:float;
 }
+
+table AllTypes {
+  a:bool;
+  b:byte;
+  c:ubyte;
+  d:short;
+  e:ushort;
+  f:int;
+  g:uint;
+  h:long;
+  i:ulong;
+  j:float;
+  k:double;
+  l:string (required);
+}
+
+// table AllTypesWithDefaults {
+//   a:bool = true;
+//   b:byte = -1;
+//   c:ubyte = 2;
+//   d:short = -3;
+//   e:ushort = 4;
+//   f:int = -5;
+//   g:uint = 6;
+//   h:long = -7;
+//   i:ulong = 8;
+//   j:float = 9.5;
+//   k:double = 10.5;
+//   l:string (required) = "asdf";
+// }
+
 table Monster {
   pos:Vec3; // Struct.
   mana:short = 150;
@@ -15,7 +63,6 @@ table Monster {
   inventory:[ubyte];  // Vector of scalars.
   color:Color = Blue; // Enum.
   weapons:[Weapon];   // Vector of tables.
-  equipped:Equipment; // Union.
   path:[Vec3];        // Vector of structs.
 }
 table Weapon {
