@@ -22,7 +22,7 @@ import haxe.ds.Either;
 enum abstract Color(Int) from Int to Int {
 	var Red = 1;
 	var Green = 2;
-	var Blue = 3;
+	var Blue = 4;
 	@inline
 	public function new(i:Int) {
 		this = i;

@@ -37,7 +37,7 @@ typedef FieldType = {
 
 class Converter {
 	static var nullPos:Position = { min: 0, max: 0, file: "" };
-	var currentModule:HaxeModule;
+	public var currentModule:HaxeModule;
 
 	public function new() {
 		currentModule = {
@@ -233,14 +233,13 @@ class Converter {
 		var name:String = enumObj.name;
 		// Build constant fields: for bit_flags, missing values (or ordinal-style 0,1,2...) become 1<<index.
 		var constFields:Array<Field> = enumObj.ctors.mapi(function(i:Int, ctor:FbsEnumCtor):Field {
-			var fieldVal:Int;
+			var fieldVal:Int = 0;
 			if (ctor.value != null) {
 				fieldVal = Std.parseInt(ctor.value);
-				// If the enum explicitly used ordinal values (0,1,2,...), convert to bit masks.
-				if (fieldVal == i) fieldVal = 1 << i;
-			} else {
-				fieldVal = 1 << i;
 			}
+			fieldVal = 1 << i;
+			
+			trace(i, fieldVal, Type.typeof(i), Type.typeof(fieldVal));
 			return {
 				name: ctor.name.getParameters()[0],
 				kind: FVar(null, { expr: EConst(CInt(Std.string(fieldVal))), pos: nullPos }),

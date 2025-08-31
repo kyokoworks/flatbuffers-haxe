@@ -75,7 +75,7 @@ class TestFlatbuffers extends haxe.unit.TestCase
 		Monster.addPos(builder, pos);
 		Monster.addMana(builder, 150);
 		Monster.addHp(builder, 300);
-		Monster.addColor(builder, Monster.Color.Red);
+		Monster.addColor(builder, Monster.Color.Red | Monster.Color.Blue);
 		Monster.addName(builder, name);
 		Monster.addInventory(builder, inv);
 		Monster.addWeapons(builder, weapons);
@@ -100,7 +100,7 @@ class TestFlatbuffers extends haxe.unit.TestCase
 		assertEquals(150, monster.mana());
 		assertEquals(300, monster.hp());
 		assertEquals('Orc', monster.name());
-		assertEquals(Monster.Color.Red, monster.color());
+		assertEquals(Monster.Color.Red | Monster.Color.Blue, monster.color());
 		assertEquals(1.0, monster.pos().x());
 		assertEquals(2.0, monster.pos().y());
 		assertEquals(3.0, monster.pos().z());
