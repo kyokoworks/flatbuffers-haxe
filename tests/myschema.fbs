@@ -70,3 +70,5 @@ table Weapon {
   damage:short;
 }
 root_type Monster;
+file_identifier "MONS";
+file_extension "mon";

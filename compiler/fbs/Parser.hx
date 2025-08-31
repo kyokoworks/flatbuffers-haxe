@@ -10,7 +10,9 @@ typedef ParsedObject = {
 	unions: Array<FbsDeclaration>,
 	structs: Array<FbsDeclaration>,
 	tables: Array<FbsDeclaration>,
-	rootTypes: Array<FbsDeclaration>
+	rootTypes: Array<FbsDeclaration>,
+	fileIdentifiers: Array<FbsDeclaration>,
+	fileExtensions: Array<FbsDeclaration>
 }
 
 class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken> implements hxparse.ParserBuilder {
@@ -22,7 +24,9 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 		unions: [],
 		structs: [],
 		tables: [],
-		rootTypes: []
+		rootTypes: [],
+		fileIdentifiers: [],
+		fileExtensions: []
 	};
 
 	public function new(input:byte.ByteData, sourceName:String) {
@@ -47,6 +51,10 @@ class Parser extends hxparse.Parser<hxparse.LexerTokenSource<FbsToken>, FbsToken
 					parsedObject.tables.push(tb);
 				case [{def: TIdent("root_type")}, rt = rootTypeParse([])]:
 					parsedObject.rootTypes.push(rt);
+				case [{def: TIdent("file_identifier")}, {def: TString(s)}, {def: TSemicolon}]:
+					parsedObject.fileIdentifiers.push(DFileIdentifier(s));
+				case [{def: TIdent("file_extension")}, {def: TString(s)}, {def: TSemicolon}]:
+					parsedObject.fileExtensions.push(DFileExtension(s));
 				case [{def: TEof}]:
 					break;
 				case _:

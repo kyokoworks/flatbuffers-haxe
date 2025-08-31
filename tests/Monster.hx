@@ -185,6 +185,15 @@ class Monster {
 		this.bb = bb;
 		return this;
 	}
+	public static function finishMonsterBuffer(builder:Builder, offset:Offset):Void {
+		builder.finish(offset, "MONS", false);
+	}
+	public static function finishSizePrefixedMonsterBuffer(builder:Builder, offset:Offset):Void {
+		builder.finish(offset, "MONS", true);
+	}
+	public static function bufferHasIdentifier(bb:ByteBuffer):Bool {
+		return bb.__has_identifier("MONS");
+	}
 	public static function getRootAsMonster(bb:ByteBuffer, ?obj:Monster):Monster {
 		return obj != null ? obj.__init(bb.readInt32(bb.position()) + bb.position(), bb) : new Monster().__init(bb.readInt32(bb.position()) + bb.position(), bb);
 	}

@@ -7,9 +7,12 @@ generate.hxml
 
 --next
 
+build-js.hxml
+
+--next
+
 build-cpp.hxml
 
 --next
 
-# --cwd tests
-build-js.hxml
+--cmd build/cpp/UnitTest-debug

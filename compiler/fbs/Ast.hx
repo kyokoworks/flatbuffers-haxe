@@ -98,4 +98,6 @@ enum FbsDeclaration {
 	DStruct(str:FbsStruct);
 	DTable(tb:FbsTable);
 	DRootType(rt:Array<String>);
+	DFileIdentifier(fi:String);
+	DFileExtension(fe:String);
 }

@@ -13,7 +13,9 @@ typedef HaxeModule = {
 	types: Array<TypeDefinition>,
 	declTypeRef: Map<String, FbsDeclaration>,
 	structSizeRef: Map<String, StructSize>,
-	structPaddingRef: Map<String, StructPadding>
+	structPaddingRef: Map<String, StructPadding>,
+	fileIdentifier:Null<String>,
+	fileExtension:Null<String>
 }
 
 typedef StructSize = {
@@ -44,7 +46,9 @@ class Converter {
 			toplevel: [],
 			declTypeRef: new Map<String, FbsDeclaration>(),
 			structSizeRef: new Map<String, StructSize>(),
-			structPaddingRef: new Map<String, StructPadding>()
+			structPaddingRef: new Map<String, StructPadding>(),
+			fileIdentifier: null,
+			fileExtension: null
 		};
 	}
 
@@ -54,6 +58,15 @@ class Converter {
 			currentModule.toplevel.push(convertNamespace(decl));
 		});
 		currentModule.toplevel.push(convertImport());
+		parsedObj.fileIdentifiers.map(function(decl:FbsDeclaration) {
+			currentModule.fileIdentifier = convertFromDeclString(decl);
+		});
+		parsedObj.fileExtensions.map(function(decl:FbsDeclaration) {
+			currentModule.fileExtension = convertFromDeclString(decl);
+		});
+		parsedObj.rootTypes.map(function(decl:FbsDeclaration) {
+			currentModule.className = convertFromDeclArrayString(decl);
+		});
 		parsedObj.enums.map(function(decl:FbsDeclaration) {
 			currentModule.types.push(convertEnum(decl));
 		});
@@ -63,12 +76,9 @@ class Converter {
 		parsedObj.tables.map(function(decl:FbsDeclaration) {
 			currentModule.types.push(convertTable(decl));
 		});
-		parsedObj.rootTypes.map(function(decl:FbsDeclaration) {
-			currentModule.className = convertRootType(decl);
-		});
 
 		var printer:haxe.macro.Printer = new haxe.macro.Printer();
-        for (t in currentModule.types){
+		for (t in currentModule.types){
 			trace(printer.printTypeDefinition(t));
 		};
 
@@ -76,9 +86,18 @@ class Converter {
 	}
 
 	function storeDeclTypes(parsedObj:ParsedObject):Void {
-		for(field in Reflect.fields(parsedObj)) {
-            for (decl in cast ( Reflect.field(parsedObj, field), Array<Dynamic>)) {
-				switch cast(decl, FbsDeclaration) {
+		var lists:Array<Array<FbsDeclaration>> = [
+			parsedObj.namespaces,
+			parsedObj.enums,
+			parsedObj.unions,
+			parsedObj.structs,
+			parsedObj.tables,
+			parsedObj.rootTypes
+		];
+
+		for (list in lists) {
+			for (decl in list) {
+				switch (cast decl:FbsDeclaration) {
 					case DNamespace(p):
 						currentModule.declTypeRef.set(p[p.length - 1], decl);
 					case DEnum(p):
@@ -91,9 +110,10 @@ class Converter {
 						currentModule.declTypeRef.set(p.name, decl);
 					case DRootType(p):
 						currentModule.declTypeRef.set(p[p.length - 1], decl);
+					case DFileIdentifier(p): continue;
+					case DFileExtension(p): continue;
 				}
-            }
-
+			}
 		}
 	}
 
@@ -531,7 +551,7 @@ class Converter {
 							case TPrimitive(TBool):
 								retExpr = makeExpr(EReturn(
 									makeExpr(ETernary(
-										makeIdent('offset != 0'), makeIdent('(this.bb.readInt8(this.bb_pos + offset) != 0)'), makeIdent('false')
+										makeIdent('offset != 0'), makeIdent('(this.bb.readInt8(this.bb_pos + offset) != 0)'), makeIdentFromBool(false)
 									))
 								));
 							default:
@@ -990,15 +1010,45 @@ class Converter {
 			pos: nullPos
 		}
 
+		var rootFields:Array<Field> = [];
+
+		var isRoot = structObj.name == currentModule.className;
+		if (isRoot) {
+			var finisher = this.generateFinisher(false);
+			var finisherSizePrefixed = this.generateFinisher(true);
+
+			rootFields = [finisher, finisherSizePrefixed];
+
+			if (currentModule.fileIdentifier != null) {
+				var bufferHasIdent:Field = {
+					name: 'bufferHasIdentifier',
+					kind: FFun({
+						args: [makeFuncArg('bb', makeType('ByteBuffer'))],
+						ret: makeType('Bool'),
+						expr: makeExpr(EBlock([
+							makeExpr(EReturn(makeExpr(ECall(makeIdent('bb.__has_identifier'), [makeString(currentModule.fileIdentifier)]))))
+						])),
+						params: null
+					}),
+					doc: null,
+					meta: [],
+					access: [APublic, AStatic],
+					pos: nullPos
+				};
+				rootFields.push(bufferHasIdent);
+			}
+		}
+
 		var allFields:Array<Field> = Lambda.array(Lambda.flatten([
 			makeBbVars(),
 			[makeCon()],
 			[makeInitFunc(structObj.name)],
+			rootFields,
 			[convertTableGetRoot(structObj)],
 			Lambda.flatten(funcFields),
 			[funcStartFields],
 			Lambda.flatten(funcAddFields),
-			[funcEndFields]
+			[funcEndFields],
 		]));
 
 		return {
@@ -1037,9 +1087,14 @@ class Converter {
 
 	// Convert Root Type.
 
-	function convertRootType(decl:FbsDeclaration):String {
+	function convertFromDeclArrayString(decl:FbsDeclaration):String {
 		var structObj:Array<String> = decl.getParameters()[0];
 		return structObj[0];
+	}
+
+	function convertFromDeclString(decl:FbsDeclaration):String {
+		var structObj:String = decl.getParameters()[0];
+		return structObj;
 	}
 
 	// Utils.
@@ -1088,6 +1143,9 @@ class Converter {
 	}
 	static inline function makeString(name:String):Expr {
 		return makeExpr(EConst(CString(name)));
+	}
+	static inline function makeIdentFromBool(value:Bool):Expr {
+		return makeExpr(EConst(CIdent(if (value) "true" else "false")));
 	}
 
 	// Shorthand for constructor.
@@ -1150,5 +1208,34 @@ class Converter {
 				access: [],
 				pos: nullPos
 		}];
+	}
+
+	function generateFinisher(sizePrefixed:Bool): Field {
+		var idStr = currentModule.fileIdentifier;
+		var expr = makeExpr(ECall(makeIdent('builder.finish'), [
+			makeIdent('offset'),
+			idStr != null ? makeString(idStr) : makeIdent('null'),
+			makeIdentFromBool(sizePrefixed)
+		]));
+		
+		var name = sizePrefixed
+			? 'finishSizePrefixed' + currentModule.className + 'Buffer'
+			: 'finish' + currentModule.className + 'Buffer';
+
+		var field:Field = {
+			name: name,
+			kind: FFun({
+				args: [makeFuncArg('builder', makeType('Builder')), makeFuncArg('offset', makeType('Offset'))],
+				ret: makeType('Void'),
+				expr: makeExpr(EBlock([expr])),
+				params: null
+			}),
+			doc: null,
+			meta: [],
+			access: [APublic, AStatic],
+			pos: nullPos
+		};
+
+		return field;
 	}
 }

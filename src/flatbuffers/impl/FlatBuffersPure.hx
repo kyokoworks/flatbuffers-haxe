@@ -43,7 +43,7 @@ class Builder
 	private var initial_size:Int;
 	private var space:Int;
 	private var minalign:Int;
-	private var vtable:Array<Int>;
+	private var vtable:Null<Array<Int>>;
 	private var vtable_in_use:Int;
 	private var isNested:Bool;
 	private var object_start:Int;
@@ -100,7 +100,7 @@ class Builder
 		// Reallocate the buffer if needed.
 		while (this.space < align_size + size + additional_bytes) {
 			var old_buf_size = this.bb.capacity();
-			this.bb = this.growByteBuffer(this.bb);
+			this.bb = Builder.growByteBuffer(this.bb);
 			this.space += this.bb.capacity() - old_buf_size;
 		}
 
@@ -260,7 +260,9 @@ class Builder
 
 	public function slot(voffset:Int):Void
 	{
-		this.vtable[voffset] = this.offset();
+		if (this.vtable != null) {
+			this.vtable[voffset] = this.offset();
+		}
 	}
 
 	public function offset():Offset
@@ -268,7 +270,7 @@ class Builder
 		return this.bb.capacity() - this.space;
 	}
 
-	public function growByteBuffer(bb:ByteBuffer):ByteBuffer
+	public static function growByteBuffer(bb:ByteBuffer):ByteBuffer
 	{
 		var old_buf_size = bb.capacity();
 
@@ -283,7 +285,7 @@ class Builder
 
 		var index:Int = new_buf_size - old_buf_size;
 		for(i in 0...bb.bytes().length) {
-			nbb.bytes().set(index, bb.bytes().get(i));
+			nbb.bytes()[index] = bb.bytes()[i];
 			index++;
 		}
 		
@@ -321,7 +323,13 @@ class Builder
 
 		// Trim trailing zeroes.
 		var i:Int = this.vtable_in_use - 1;
-		while(i >= 0) {
+		while (i >= 0 && this.vtable[i] == 0) {
+			i--;
+		}
+		var trimmed_size = i + 1;
+
+		// Write out the current vtable.
+		while (i >= 0) {
 			this.addInt16(this.vtable[i] != 0 ? vtableloc - this.vtable[i] : 0);
 			i--;
 		}
@@ -382,14 +390,16 @@ class Builder
 		return vtableloc;
 	}
 
-	public function finish(root_table:Offset, ?opt_file_identifier:Null<String>):Void
+	public function finish(root_table:Offset, ?opt_file_identifier:Null<String>, ?opt_size_prefix:Null<Bool>):Void
 	{
+		var size_prefix:Int = (opt_size_prefix == null || !opt_size_prefix) ? 0 : FlatBuffersPure.SIZEOF_INT;
+
 		if (opt_file_identifier != null) {
 			var file_identifier:Null<String> = opt_file_identifier;
 			this.prep(this.minalign, FlatBuffersPure.SIZEOF_INT +
-				FlatBuffersPure.FILE_IDENTIFIER_LENGTH);
+				FlatBuffersPure.FILE_IDENTIFIER_LENGTH + size_prefix);
 			if (file_identifier.length != FlatBuffersPure.FILE_IDENTIFIER_LENGTH) {
-				throw "FlatBuffers: file identifier must be length" +
+				throw "FlatBuffers: file identifier must be length " +
 					Std.string(FlatBuffersPure.FILE_IDENTIFIER_LENGTH);
 			}
 			var i = FlatBuffersPure.FILE_IDENTIFIER_LENGTH - 1;
@@ -399,9 +409,17 @@ class Builder
 				i--;
 			}
 		}
-		this.prep(this.minalign, FlatBuffersPure.SIZEOF_INT);
+		this.prep(this.minalign, FlatBuffersPure.SIZEOF_INT + size_prefix);
 		this.addOffset(root_table);
+		if (size_prefix != 0) {
+			this.addInt32(this.bb.capacity() - this.space);
+		}
 		this.bb.setPosition(this.space);
+	}
+
+	public function finishSizePrefixed(root_table:Offset, ?opt_file_identifier:Null<String>):Void
+	{
+		this.finish(root_table, opt_file_identifier, true);
 	}
 
 	public function requiredField(table:Offset, field:Int):Void{
@@ -487,6 +505,25 @@ class Builder
 		return this.endVector();
 	}
 
+	public function createByteVector(v:Null<UInt8Array>):Offset
+	{
+		if (v == null) {
+			return 0;
+		}
+
+		this.startVector(1, v.length, 1);
+		this.bb.setPosition(this.space -= v.length);
+
+		var offset = this.space;
+		var bytes = this.bb.bytes();
+
+		for (i in 0...v.length) {
+			bytes[offset++] = v[i];
+		}
+
+		return this.endVector();
+	}
+
 	public function createLong(low:Int, high:Int):Int64
 	{
 		return Int64.make(low, high);
@@ -509,7 +546,7 @@ class ByteBuffer
 		return new ByteBuffer(new UInt8Array(byte_size));
 	}
 
-	public function bytes():UInt8Array
+	public inline function bytes():UInt8Array
 	{
 		return this.bytes_;
 	}
@@ -609,9 +646,9 @@ class ByteBuffer
 	public function writeUint32(offset:Int, value:Int):Void
 	{
 		this.bytes_[offset] = value;
-    this.bytes_[offset + 1] = value >> 8;
-    this.bytes_[offset + 2] = value >> 16;
-    this.bytes_[offset + 3] = value >> 24;
+		this.bytes_[offset + 1] = value >> 8;
+		this.bytes_[offset + 2] = value >> 16;
+		this.bytes_[offset + 3] = value >> 24;
 	}
 
 	public function writeInt64(offset:Int, value:Int64):Void
@@ -637,6 +674,18 @@ class ByteBuffer
 		FlatBuffersPure.float64[0] = value;
 		this.writeInt32(offset, FlatBuffersPure.int32[FlatBuffersPure.isLittleEndian ? 0 : 1]);
 		this.writeInt32(offset + 4, FlatBuffersPure.int32[FlatBuffersPure.isLittleEndian ? 1 : 0]);
+	}
+
+	public function getBufferIdentifier():String
+	{
+		if (this.bytes_.length < this.position_ + FlatBuffersPure.SIZEOF_INT + FlatBuffersPure.FILE_IDENTIFIER_LENGTH) {
+			throw "FlatBuffers: ByteBuffer is too short to contain an identifier.";
+		}
+		var result:String = "";
+		for (i in 0...FlatBuffersPure.FILE_IDENTIFIER_LENGTH) {
+			result += String.fromCharCode(this.readInt8(this.position_ + FlatBuffersPure.SIZEOF_INT + i));
+		}
+		return result;
 	}
 
 	public function __offset(bb_pos:Int, vtable_offset:Int):Int
