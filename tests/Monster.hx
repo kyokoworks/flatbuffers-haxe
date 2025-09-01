@@ -18,6 +18,11 @@ import haxe.io.Float32Array;
 import haxe.io.Float64Array;
 #end
 import haxe.ds.Either;
+import flatbuffers.json.Value;
+import flatbuffers.json.ValueExtensions;
+using flatbuffers.json.ValueExtensions;
+import haxe.ds.StringMap;
+
 
 enum abstract Color(Int) from Int to Int {
 	var Red = 1;
@@ -31,6 +36,38 @@ enum abstract Color(Int) from Int to Int {
 	public static function or(a:Color, b:Color):Color;
 	@:op(a&b)
 	public static function and(a:Color, b:Color):Color;
+	public static function fromStringSingle(s:String):Null<Color> switch s {
+		case "Red":return Red;
+		case "Green":return Green;
+		case "Blue":return Blue;
+		default:return null;
+	};
+	public static function __tojson(e:Color):Value {
+		var allFlags:Int = Red | Green | Blue;
+		if ((e & ~allFlags) != 0) return VNumber(Std.string(e));
+		var flags:Array<String> = [];
+		{
+			if ((e & Red) != 0) flags.push("Red");
+			if ((e & Green) != 0) flags.push("Green");
+			if ((e & Blue) != 0) flags.push("Blue");
+		};
+		var finalStr = flags.join(" ");
+		return VString(finalStr);
+	}
+	public static function __json(val:Value):Color switch val {
+		case VNumber(i):return new Color(Std.parseInt(i));
+		case VString(s):{
+			var parts = s.split(" ");
+			var result = 0;
+			for (part in parts) {
+				var e = fromStringSingle(part);
+				if (e == null) throw "Unknown enum value: " + part;
+				result |= e;
+			};
+			return new Color(result);
+		};
+		default:throw "Only integer and string values are allowed for enum Color";
+	};
 }
 
 enum abstract Race(Int) from Int to Int {
@@ -42,6 +79,29 @@ enum abstract Race(Int) from Int to Int {
 	public function new(i:Int) {
 		this = i;
 	}
+	public static function fromStringSingle(s:String):Null<Race> switch s {
+		case "None":return None;
+		case "Human":return Human;
+		case "Dwarf":return Dwarf;
+		case "Elf":return Elf;
+		default:return null;
+	};
+	public static function __tojson(e:Race):Value switch e {
+		case None:return VString("None");
+		case Human:return VString("Human");
+		case Dwarf:return VString("Dwarf");
+		case Elf:return VString("Elf");
+		default:return VNumber(Std.string(cast(e, Int)));
+	};
+	public static function __json(val:Value):Race switch val {
+		case VNumber(i):return new Race(Std.parseInt(i));
+		case VString(s):{
+			var e = fromStringSingle(s);
+			if (e == null) throw "Unknown enum value: " + s;
+			return e;
+		};
+		default:throw "Only integer and string values are allowed for enum Race";
+	};
 }
 
 class Vec3 {
@@ -68,6 +128,19 @@ class Vec3 {
 	}
 	public function z():Float {
 		return this.bb.readFloat32(this.bb_pos + 8);
+	}
+	public static function __json(obj:haxe.ds.StringMap<Value>, builder:Builder):Offset {
+		var val_x = obj.get("x");
+		var val_y = obj.get("y");
+		var val_z = obj.get("z");
+		return Vec3.createVec3(builder, val_x.asFloat(), val_y.asFloat(), val_z.asFloat());
+	}
+	public static function __tojson(obj:Vec3):Value {
+		var map = new haxe.ds.StringMap<Value>();
+		map.set("x", VNumber(Std.string(obj.x())));
+		map.set("y", VNumber(Std.string(obj.y())));
+		map.set("z", VNumber(Std.string(obj.z())));
+		return VObject(map);
 	}
 }
 
@@ -173,6 +246,52 @@ class AllTypes {
 	public static function endAllTypes(builder:Builder):Offset {
 		var offset:Int = builder.endObject();
 		return offset;
+	}
+	public static function __json(obj:haxe.ds.StringMap<Value>, builder:Builder):Offset {
+		var val_a = obj.get("a");
+		var val_b = obj.get("b");
+		var val_c = obj.get("c");
+		var val_d = obj.get("d");
+		var val_e = obj.get("e");
+		var val_f = obj.get("f");
+		var val_g = obj.get("g");
+		var val_h = obj.get("h");
+		var val_i = obj.get("i");
+		var val_j = obj.get("j");
+		var val_k = obj.get("k");
+		var val_l = obj.get("l");
+		var off_l:Offset = 0;
+		if (val_l != null) off_l = builder.createString(Right(val_l.asString()));
+		AllTypes.startAllTypes(builder);
+		if (val_a != null) AllTypes.addA(builder, val_a.asBool());
+		if (val_b != null) AllTypes.addB(builder, val_b.asInt());
+		if (val_c != null) AllTypes.addC(builder, val_c.asInt());
+		if (val_d != null) AllTypes.addD(builder, val_d.asInt());
+		if (val_e != null) AllTypes.addE(builder, val_e.asInt());
+		if (val_f != null) AllTypes.addF(builder, val_f.asInt());
+		if (val_g != null) AllTypes.addG(builder, val_g.asInt());
+		if (val_h != null) AllTypes.addH(builder, val_h.asInt64());
+		if (val_i != null) AllTypes.addI(builder, val_i.asInt64());
+		if (val_j != null) AllTypes.addJ(builder, val_j.asFloat());
+		if (val_k != null) AllTypes.addK(builder, val_k.asFloat());
+		if (off_l != 0) AllTypes.addL(builder, off_l);
+		return AllTypes.endAllTypes(builder);
+	}
+	public static function __tojson(obj:AllTypes):Value {
+		var map = new haxe.ds.StringMap<Value>();
+		map.set("a", VBool(obj.a()));
+		map.set("b", VNumber(Std.string(obj.b())));
+		map.set("c", VNumber(Std.string(obj.c())));
+		map.set("d", VNumber(Std.string(obj.d())));
+		map.set("e", VNumber(Std.string(obj.e())));
+		map.set("f", VNumber(Std.string(obj.f())));
+		map.set("g", VNumber(Std.string(obj.g())));
+		map.set("h", VNumber(Std.string(obj.h())));
+		map.set("i", VNumber(Std.string(obj.i())));
+		map.set("j", VNumber(Std.string(obj.j())));
+		map.set("k", VNumber(Std.string(obj.k())));
+		if (obj.l() != null) map.set("l", VString(obj.l()));
+		return VObject(map);
 	}
 }
 
@@ -304,6 +423,100 @@ class Monster {
 		var offset:Int = builder.endObject();
 		return offset;
 	}
+	public static function __json(obj:haxe.ds.StringMap<Value>, builder:Builder):Offset {
+		var val_pos = obj.get("pos");
+		var val_mana = obj.get("mana");
+		var val_hp = obj.get("hp");
+		var val_name = obj.get("name");
+		var off_name:Offset = 0;
+		if (val_name != null) off_name = builder.createString(Right(val_name.asString()));
+		var val_friendly = obj.get("friendly");
+		var val_inventory = obj.get("inventory");
+		var off_inventory:Offset = 0;
+		if (val_inventory != null) {
+			var arr_inventory = val_inventory.asArray();
+			var native_arr_inventory:Array<Int> = [];
+			var i:Int = 0;
+			do {
+				native_arr_inventory.push(arr_inventory[i].asInt());
+				++i;
+			} while (i < arr_inventory.length);
+			off_inventory = Monster.createInventoryVector(builder, native_arr_inventory);
+		};
+		var val_color = obj.get("color");
+		var val_weapons = obj.get("weapons");
+		var off_weapons:Offset = 0;
+		if (val_weapons != null) {
+			var arr_weapons = val_weapons.asArray();
+			var offs_weapons:Array<Offset> = [];
+			var i:Int = 0;
+			do {
+				offs_weapons.push(Weapon.__json(arr_weapons[i].asObject(), builder));
+				++i;
+			} while (i < arr_weapons.length);
+			off_weapons = Monster.createWeaponsVector(builder, offs_weapons);
+		};
+		var val_path = obj.get("path");
+		var off_path:Offset = 0;
+		if (val_path != null) {
+			var arr_path = val_path.asArray();
+			Monster.startPathVector(builder, arr_path.length);
+			var i:Int = arr_path.length - 1;
+			do {
+				Vec3.__json(arr_path[i].asObject(), builder);
+				--i;
+			} while (i >= 0);
+			off_path = builder.endVector();
+		};
+		Monster.startMonster(builder);
+		if (val_pos != null) Monster.addPos(builder, Vec3.__json(val_pos.asObject(), builder));
+		if (val_mana != null) Monster.addMana(builder, val_mana.asInt());
+		if (val_hp != null) Monster.addHp(builder, val_hp.asInt());
+		if (off_name != 0) Monster.addName(builder, off_name);
+		if (val_friendly != null) Monster.addFriendly(builder, val_friendly.asBool());
+		if (off_inventory != 0) Monster.addInventory(builder, off_inventory);
+		if (val_color != null) Monster.addColor(builder, Color.__json(val_color));
+		if (off_weapons != 0) Monster.addWeapons(builder, off_weapons);
+		if (off_path != 0) Monster.addPath(builder, off_path);
+		return Monster.endMonster(builder);
+	}
+	public static function __tojson(obj:Monster):Value {
+		var map = new haxe.ds.StringMap<Value>();
+		if (obj.pos() != null) map.set("pos", Vec3.__tojson(obj.pos()));
+		map.set("mana", VNumber(Std.string(obj.mana())));
+		map.set("hp", VNumber(Std.string(obj.hp())));
+		if (obj.name() != null) map.set("name", VString(obj.name()));
+		map.set("friendly", VBool(obj.friendly()));
+		if (obj.inventoryLength() > 0) map.set("inventory", {
+			var arr:Array<Value> = [];
+			var i:Int = 0;
+			do {
+				arr.push(VNumber(Std.string(obj.inventory(i))));
+				++i;
+			} while (i < obj.inventoryLength());
+			VArray(arr);
+		});
+		map.set("color", Color.__tojson(obj.color()));
+		if (obj.weaponsLength() > 0) map.set("weapons", {
+			var arr:Array<Value> = [];
+			var i:Int = 0;
+			do {
+				arr.push(Weapon.__tojson(obj.weapons(i)));
+				++i;
+			} while (i < obj.weaponsLength());
+			VArray(arr);
+		});
+		if (obj.pathLength() > 0) map.set("path", {
+			var arr:Array<Value> = [];
+			var i:Int = 0;
+			do {
+				arr.push(Vec3.__tojson(obj.path(i)));
+				++i;
+			} while (i < obj.pathLength());
+			VArray(arr);
+		});
+		return VObject(map);
+	}
 }
 
 class Weapon {
@@ -338,6 +551,22 @@ class Weapon {
 	public static function endWeapon(builder:Builder):Offset {
 		var offset:Int = builder.endObject();
 		return offset;
+	}
+	public static function __json(obj:haxe.ds.StringMap<Value>, builder:Builder):Offset {
+		var val_name = obj.get("name");
+		var off_name:Offset = 0;
+		if (val_name != null) off_name = builder.createString(Right(val_name.asString()));
+		var val_damage = obj.get("damage");
+		Weapon.startWeapon(builder);
+		if (off_name != 0) Weapon.addName(builder, off_name);
+		if (val_damage != null) Weapon.addDamage(builder, val_damage.asInt());
+		return Weapon.endWeapon(builder);
+	}
+	public static function __tojson(obj:Weapon):Value {
+		var map = new haxe.ds.StringMap<Value>();
+		if (obj.name() != null) map.set("name", VString(obj.name()));
+		map.set("damage", VNumber(Std.string(obj.damage())));
+		return VObject(map);
 	}
 }
 

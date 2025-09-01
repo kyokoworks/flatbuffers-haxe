@@ -1,5 +1,6 @@
 package fbs;
 
+import fbs.ConverterJson.CoverterJson;
 import fbs.Ast;
 import fbs.Parser;
 
@@ -119,7 +120,8 @@ class Converter {
 
 	function convertImport():String
 	{
-		return 'import flatbuffers.FlatBuffers;\nimport flatbuffers.FlatBuffers.ByteBuffer;\nimport flatbuffers.FlatBuffers.Offset;\nimport flatbuffers.FlatBuffers.Builder;\nimport flatbuffers.FlatBuffers.Long;\nimport flatbuffers.impl.FlatBuffersPure.Encoding;\nimport flatbuffers.impl.FlatBuffersPure.TableT;\nimport haxe.Int32;\nimport haxe.Int64;\nimport haxe.io.UInt8Array;\nimport haxe.io.UInt16Array;\nimport haxe.io.Int32Array;\n#if js\nimport flatbuffers.io.Float32Array;\nimport flatbuffers.io.Float64Array;\n#else\nimport haxe.io.Float32Array;\nimport haxe.io.Float64Array;\n#end\nimport haxe.ds.Either;';
+		return 'import flatbuffers.FlatBuffers;\nimport flatbuffers.FlatBuffers.ByteBuffer;\nimport flatbuffers.FlatBuffers.Offset;\nimport flatbuffers.FlatBuffers.Builder;\nimport flatbuffers.FlatBuffers.Long;\nimport flatbuffers.impl.FlatBuffersPure.Encoding;\nimport flatbuffers.impl.FlatBuffersPure.TableT;\nimport haxe.Int32;\nimport haxe.Int64;\nimport haxe.io.UInt8Array;\nimport haxe.io.UInt16Array;\nimport haxe.io.Int32Array;\n#if js\nimport flatbuffers.io.Float32Array;\nimport flatbuffers.io.Float64Array;\n#else\nimport haxe.io.Float32Array;\nimport haxe.io.Float64Array;\n#end\nimport haxe.ds.Either;'
+			+ CoverterJson.getJsonImports();
 	}
 
 	function convertNamespace(decl:FbsDeclaration):String {
@@ -217,7 +219,8 @@ class Converter {
 
 		var allFields:Array<Field> = Lambda.array(Lambda.flatten([
 			fields,
-			methods
+			methods,
+			CoverterJson.makeEnumMethods(enumObj, this, false)
 		]));
 
 		return {
@@ -292,7 +295,8 @@ class Converter {
 		var allFields:Array<Field> = Lambda.array(Lambda.flatten([
 			constFields,
 			methods,
-			[opOr, opAnd]
+			[opOr, opAnd],
+			CoverterJson.makeEnumMethods(enumObj, this, true)
 		]));
 
 		return {
@@ -351,7 +355,8 @@ class Converter {
 			[makeCon()],
 			[makeInitFunc(structObj.name)],
 			[convertStructCreate(structObj)],
-			funcFields()
+			funcFields(),
+			CoverterJson.makeStructJsonMethods(structObj, this)
 		]));
 		return {
 			pack: [],
@@ -1058,6 +1063,7 @@ class Converter {
 			[funcStartFields],
 			Lambda.flatten(funcAddFields),
 			[funcEndFields],
+			CoverterJson.makeTableJsonMethods(structObj, this)
 		]));
 
 		return {
