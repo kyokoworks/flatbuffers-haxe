@@ -134,12 +134,17 @@ class Converter {
 
 	function convertEnum(decl:FbsDeclaration):TypeDefinition {
 		var enumObj:FbsEnum = decl.getParameters()[0];
-		var fields:Array<Field> = enumObj.ctors.mapi(function(i:Int, ctor:FbsEnumCtor):Field {
+		
+		// Calculate values correctly for sequential enums
+		var nextValue = 0;
+		var fields:Array<Field> = enumObj.ctors.map(function(ctor:FbsEnumCtor):Field {
 			var fieldVal = 0;
 			if (ctor.value != null) {
 				fieldVal = Std.parseInt(ctor.value);
+				nextValue = fieldVal + 1;
 			} else {
-				fieldVal = i;
+				fieldVal = nextValue;
+				nextValue++;
 			}
 			return {
 				name: ctor.name.getParameters()[0],
@@ -231,15 +236,20 @@ class Converter {
 	function convertEnumBitFlags(enumObj:FbsEnum, fieldsConst:Array<Field>, methods:Array<Field>):TypeDefinition {
 		var baseType = makeType("Int");
 		var name:String = enumObj.name;
-		// Build constant fields: for bit_flags, missing values (or ordinal-style 0,1,2...) become 1<<index.
-		var constFields:Array<Field> = enumObj.ctors.mapi(function(i:Int, ctor:FbsEnumCtor):Field {
+		// Build constant fields: for bit_flags, use explicit values when provided, 
+		// otherwise use 1 << (previous bit position + 1)
+		var nextBitIndex = 0;
+		var constFields:Array<Field> = enumObj.ctors.map(function(ctor:FbsEnumCtor):Field {
 			var fieldVal:Int = 0;
 			if (ctor.value != null) {
-				fieldVal = Std.parseInt(ctor.value);
+				var explicitValue = Std.parseInt(ctor.value);
+				fieldVal = 1 << explicitValue;
+				nextBitIndex = explicitValue + 1;
+			} else {
+				fieldVal = 1 << nextBitIndex;
+				nextBitIndex++;
 			}
-			fieldVal = 1 << i;
 			
-			trace(i, fieldVal, Type.typeof(i), Type.typeof(fieldVal));
 			return {
 				name: ctor.name.getParameters()[0],
 				kind: FVar(null, { expr: EConst(CInt(Std.string(fieldVal))), pos: nullPos }),

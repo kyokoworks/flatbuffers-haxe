@@ -19,6 +19,18 @@ class UnitTest
 
 class TestFlatbuffers extends haxe.unit.TestCase 
 {
+	public function testConstants() {
+		// Check whether the enums have been generated correctly.
+		assertEquals(Monster.Color.Red, 1);
+		assertEquals(Monster.Color.Green, 2);
+		assertEquals(Monster.Color.Blue, 8);
+
+		assertEquals(Monster.Race.None, -1);
+		assertEquals(Monster.Race.Human, 0);
+		assertEquals(Monster.Race.Dwarf, 1);
+		assertEquals(Monster.Race.Elf, 2);
+	}
+
 	public function testBasic(){
 		var builder:Builder = new Builder(1024);
 
